@@ -3,7 +3,6 @@
 import cv2
 import numpy as np
 import InputOutput
-import kmean
 
 #fx = 517 * 0.5 # focal length is calculated for 320x240
 fx = 843
@@ -11,7 +10,7 @@ obj_width = 0.305 #meters
 
 def houghTransform(image):
     #Apply the Hough Transform to find the circles
-    circles = cv2.HoughCircles(image,cv2.cv.CV_HOUGH_GRADIENT,3 , 8) #2.3 is tp be screwed 2.5 is good
+    circles = cv2.HoughCircles(image,cv2.cv.CV_HOUGH_GRADIENT,3 , 10) #2.3 is tp be screwed 2.5 is good
     
     #/// Apply the Hough Transform to find the circles
     if (circles is None):
@@ -20,10 +19,7 @@ def houghTransform(image):
         InputOutput.display_image(np.hstack([image, output]),"houghTransform")
         return circles
     else:
-        circlexList= []
-        circleyList= []
-        circlerList= []
-        circleList= []
+        #circleList= []
         circles = np.round(circles[0, :]).astype("int")
 
         output = image.copy()
@@ -35,7 +31,6 @@ def houghTransform(image):
 
         count =0 
         for (x, y, r) in circles:
-            print x, y, r
             #get aravage circle
             count = count+1            
             Sum_x= Sum_x +x #((ax*count)+x)/(count+1)
@@ -43,10 +38,7 @@ def houghTransform(image):
             Sum_r= Sum_r + r #((ar*count)+r)/(count+1)
             #avaragedCircle=
             
-            circlexList.append(x)
-            circleyList.append(y)
-            circlerList.append(r)
-            circleList.append(circles)
+            #circleList.append[circles]
             # draw the circle in the output image, then draw a rectangle
             # corresponding to the center of the circle
             
@@ -54,21 +46,13 @@ def houghTransform(image):
             cv2.rectangle(output, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
             
         ax = Sum_x/count
-        centeredCircles = kmean.printList(circles)
-        centerCirc1= centeredCircles[0]
-        centerCirc2= centeredCircles[1]
-        cv2.circle(output, (centerCirc2[0], centerCirc2[1]), centerCirc2[2], (239, 239, 239), 4)
-        cv2.rectangle(output, (centerCirc2[0] - 5, centerCirc2[1] - 5), (centerCirc2[0] + 5, centerCirc2[1] + 5), (239, 239, 239), -1)
-        cv2.circle(output, (centerCirc1[0], centerCirc1[1]), centerCirc1[2], (239, 239, 239), 4)
-        cv2.rectangle(output, (centerCirc1[0] - 5, centerCirc1[1] - 5), (centerCirc1[0] + 5, centerCirc1[1] + 5), (239, 239, 239), -1)        
-        print count
         ay = Sum_y/count
         ar = Sum_r/count
-        #cv2.circle(output, (ax, ay), ar, (239, 239, 239), 4)
-        #cv2.rectangle(output, (ax -5, ay -5), (ax+ 5, ay+5), (239, 239, 239), -1)
+        cv2.circle(output, (ax, ay), ar, (239, 239, 239), 4)
+        cv2.rectangle(output, (ax -5, ay -5), (ax+ 5, ay+5), (239, 239, 239), -1)
         # show the output image
         InputOutput.display_image(np.hstack([image, output]),"houghTransform")
-        return circles
+        return ((ax,ay,ar),)
 
 #Convert the image from a color image to a thresholded image
 def thresholdRed(image):
@@ -103,36 +87,93 @@ def thresholdRed(image):
     totalMask = mask1 + mask2
     return totalMask
     
+#Segments the image into blobs as seen from above
+#image must be thresholded first
+def getBlobs(image):
+    shape = image.shape
+    width = shape[0]
+    height = shape[1]
+    j_positions = [None]* width #stores all the locations of the tops of the objects
+    
+    #finds the first white or each x position when searching downwards
+    for i in range(width):
+        j = 0
+        while(image[i,j] == 0):
+            j+=1
+            if(j >= height):
+                break
+        j_positions[i] = j
+        print (i,j)
+    
+    #This is a list of found objects
+    objects = []
+    
+    #tracking variables
+    i = 0 #keeps track of scanning x position
+    highest_pos = (0,height) # keeps track of x,y of the highest point of the object being considered
+    start_x = 0 # the initial x position of the object
+    is_looking_at_object = False #did the last col contain a white pixel
+    
+    while(i<width):
+        if(j_positions[i]==height):
+            if(is_looking_at_object == True):
+                is_looking_at_object = False
+                #add object information to list of found objects
+                objects.append((start_x,i,highest_pos))
+            #reset tracking variables to default positions the object is over
+            highest_pos = (0,height)
+            is_looking_at_object = False
+            
+        else:
+            if(is_looking_at_object == False):
+                start_x = i
+                highest_pos = (i,j_positions[i])
+                is_looking_at_object = True
+            elif(highest_pos[1]>j_positions[i]):
+                highest_pos = (i,j_positions[i])
+        i+=1
+    print objects
+    return objects
+    
+def blob_circle_detection(image):
+    blobs=getBlobs(image)
+    circles = []
+    for start_x,end_x,highest_pos in blobs:
+        x = (end_x+start_x)/2
+        radius = (end_x-start_x)/2
+        circle = (int(x),highest_pos[1],int(radius))
+        circles.append(circle)
+    return circles
+    
+def removeReflection(image):
+    #get the first highest white pixel's y position for each x
+    32
+    
 #Removes any red noise picked up in image
 def removeNoise(image):
-    kernel = np.ones((1,12),np.uint8)
-    # opening
-    image = cv2.erode(image,kernel,iterations = 2)
-    image = cv2.dilate(image,kernel,iterations = 4)
-
-    # closing
-    image = cv2.dilate(image,kernel,iterations =4)
-    image = cv2.erode(image,kernel,iterations = 2)
-    """
-    image = cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
-    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-    image = cv2.dilate(image,kernel,iterations =15)
-    image = cv2.erode(image,kernel,iterations = 2)
-    image = cv2.dilate(image,kernel,iterations =15)
-    image = cv2.erode(image,kernel,iterations = 2)
-    image = cv2.dilate(image,kernel,iterations =15)
-    image = cv2.erode(image,kernel,iterations = 2)"""
-   
-    return image
-    
-
+	kernel = np.ones((9,9),np.uint8)
+	# opening
+	image = cv2.erode(image,kernel,iterations = 2)
+	image = cv2.dilate(image,kernel,iterations = 2)
+	
+	# closing
+	image = cv2.dilate(image,kernel,iterations =2)
+	image = cv2.erode(image,kernel,iterations = 2)
+	"""image = cv2.dilate(image,kernel,iterations =15)
+	image = cv2.erode(image,kernel,iterations = 2)
+	image = cv2.dilate(image,kernel,iterations =15)
+	image = cv2.erode(image,kernel,iterations = 2)
+	image = cv2.dilate(image,kernel,iterations =15)
+	image = cv2.erode(image,kernel,iterations = 2)"""      
+	return image
 
 def get_blob_centroid(img, img_hsv, threshold=200):
     # Generate histogram for subregions of thresholded HSV image
     # Areas of interest are regions with white pixel count above a threshold
-    thresh = thresholdRed(img_hsv)
-    InputOutput.display_image(thresh,"Thresholded")
-    thresh = removeNoise(thresh)
+    thresh = img_hsv
+    #thresh = thresholdRed(img_hsv)
+    #InputOutput.display_image(thresh,"Thresholded")
+    #thresh = removeNoise(thresh)
     
     aoi = []
     for i,j in np.ndindex((16,12)):
